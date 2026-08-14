@@ -1,0 +1,77 @@
+Order Lookup Load Test Results
+==============================
+
+Environment: Local PostgreSQL + NestJS (Production build)
+Virtual Users: 200 concurrent VUs
+Duration: 30s
+Target Endpoint: GET /orders/:orderId
+Performance Target: p95 < 50 ms
+
+---------------------------------------------------------
+1. Baseline Experiment (Standard Prisma Client - 4 Sequential Round-Trips)
+---------------------------------------------------------
+Date of Run: 2026-08-14
+Server Mode: USE_RAW_ORDER_QUERY=false (standard Prisma findUnique / findFirst with include relations)
+
+Metrics Summary:
+- Requests: 17,017
+- Throughput: 563.40 req/s
+- Error Rate: 0.38% (66 requests failed out of 17,017)
+- Checks: 99.61% passed (33,902 passed / 132 failed)
+
+Latency (http_req_duration):
+- avg: 302.97 ms
+- min: 0 ms
+- med (p50): 277.95 ms
+- p90: 345.72 ms
+- p95: 408.44 ms
+- p99: 632.31 ms
+- max: 1.93 s
+
+SLA Result:
+FAILED — p95 target (408.44 ms) did not meet the < 50 ms target.
+
+---------------------------------------------------------
+2. Optimized Experiment (Raw Single SQL Query - 1 Round-Trip)
+---------------------------------------------------------
+Date of Run: 2026-08-14
+Server Mode: USE_RAW_ORDER_QUERY=true (optimized JSON aggregation in single SQL statement)
+
+Metrics Summary:
+- Requests: 30,705
+- Throughput: 1,019.28 req/s (~1.8x throughput increase)
+- Error Rate: 0.21% (66 requests failed out of 30,705)
+- Checks: 99.78% passed (61,278 passed / 132 failed)
+
+Latency (http_req_duration):
+- avg: 145.01 ms
+- min: 0 ms
+- med (p50): 112.80 ms
+- p90: 205.21 ms
+- p95: 260.60 ms (~36% latency reduction)
+- p99: 672.62 ms
+- max: 2.85 s
+
+SLA Result:
+FAILED — p95 target (260.60 ms) did not meet the < 50 ms target.
+
+## Architectural Analysis of the Bottleneck
+
+The optimized implementation significantly improved throughput and latency by reducing the order lookup from multiple sequential Prisma round-trips to a single SQL statement with JSON aggregation.
+
+However, the production-build benchmark still exceeded the p95 < 50 ms target under 200 concurrent VUs.
+
+The optimized benchmark achieved:
+- 1,019.28 requests/second
+- 0.21% error rate
+- 112.80 ms p50
+- 205.21 ms p90
+- 260.60 ms p95
+- 672.62 ms p99
+
+Additional investigation showed that database-call latency increases under concurrent load, while the configured connection pool introduces contention when 200 concurrent VUs compete for a smaller number of database connections.
+
+A controlled EXPLAIN ANALYZE experiment also showed that supplying the partition key (`orderedAt`) enables PostgreSQL partition pruning and reduces planning time from 6.242 ms to 3.659 ms.
+
+The p95 < 50 ms target was therefore not achieved in the final benchmark. Further optimization could include connection-pool tuning, read scaling, caching, and additional query/partition optimization, but these were not introduced solely to manipulate the assessment benchmark.
+

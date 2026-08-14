@@ -1,0 +1,110 @@
+Top Products Analytics — AFTER Optimization
+=============================================
+
+Endpoint:
+GET /analytics/products/top
+
+Dataset:
+Seeded database (10k Orders, 25k OrderItems)
+
+Optimization:
+1. Created composite index on Orders partition region and timestamp range:
+   CREATE INDEX "Order_region_orderedAt_idx" ON "Order"("region", "orderedAt");
+2. Created composite index on OrderItems join key and timestamp:
+   CREATE INDEX "OrderItem_orderId_orderedAt_idx" ON "OrderItem"("orderId", "orderedAt");
+
+Query:
+WITH product_sales AS (
+  SELECT 
+    o.region,
+    TO_CHAR(o."orderedAt", 'YYYY-MM') as month,
+    oi."productId",
+    p.name as "productName",
+    p.category as "productCategory",
+    SUM((oi.quantity)::numeric * oi."unitPrice")::float as revenue
+  FROM "OrderItem" oi
+  JOIN "Order" o ON oi."orderId" = o.id AND oi."orderedAt" = o."orderedAt"
+  JOIN "Product" p ON oi."productId" = p.id
+  WHERE o.status != 'CANCELLED'
+    AND o.region = 'Latin America'
+    AND o."orderedAt" >= '2026-05-01 00:00:00' AND o."orderedAt" < '2026-05-02 00:00:00'
+  GROUP BY o.region, TO_CHAR(o."orderedAt", 'YYYY-MM'), oi."productId", p.name, p.category
+),
+ranked_sales AS (
+  SELECT 
+    region,
+    month,
+    "productId",
+    "productName",
+    "productCategory",
+    revenue,
+    DENSE_RANK() OVER (
+      PARTITION BY region, month
+      ORDER BY revenue DESC
+    )::integer as rank
+  FROM product_sales
+)
+SELECT * 
+FROM ranked_sales
+WHERE rank <= 20
+ORDER BY region, month, rank;
+
+EXPLAIN ANALYZE Output (After Optimization):
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=167.72..167.76 rows=2 width=159) (actual time=6.500..6.515 rows=16 loops=1)
+   Sort Key: ranked_sales.region, ranked_sales.month, ranked_sales.rank
+   Presorted Key: ranked_sales.region, ranked_sales.month
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+   Buffers: shared hit=138
+   ->  Subquery Scan on ranked_sales  (cost=167.67..167.71 rows=1 width=159) (actual time=6.359..6.385 rows=16 loops=1)
+         Filter: (ranked_sales.rank <= 20)
+         Buffers: shared hit=132
+         ->  WindowAgg  (cost=167.67..167.69 rows=1 width=159) (actual time=6.356..6.378 rows=16 loops=1)
+               Buffers: shared hit=132
+               ->  Sort  (cost=167.67..167.67 rows=1 width=155) (actual time=6.315..6.321 rows=16 loops=1)
+                     Sort Key: product_sales.region, product_sales.month, product_sales.revenue DESC
+                     Sort Method: quicksort  Memory: 27kB
+                     Buffers: shared hit=132
+                     ->  Subquery Scan on product_sales  (cost=167.62..167.66 rows=1 width=155) (actual time=6.210..6.263 rows=16 loops=1)
+                           Buffers: shared hit=129
+                           ->  GroupAggregate  (cost=167.62..167.66 rows=1 width=155) (actual time=6.207..6.254 rows=16 loops=1)
+                                 Group Key: (to_char(o."orderedAt", 'YYYY-MM'::text)), oi."productId", p.name, p.category
+                                 Buffers: shared hit=129
+                                 ->  Sort  (cost=167.62..167.62 rows=1 width=158) (actual time=6.124..6.131 rows=36 loops=1)
+                                       Sort Key: (to_char(o."orderedAt", 'YYYY-MM'::text)), oi."productId", p.name, p.category
+                                       Sort Method: quicksort  Memory: 29kB
+                                       Buffers: shared hit=129
+                                       ->  Nested Loop  (cost=4.92..167.61 rows=1 width=158) (actual time=5.430..6.048 rows=36 loops=1)
+                                             Buffers: shared hit=129
+                                             ->  Nested Loop  (cost=4.77..167.43 rows=1 width=70) (actual time=0.146..0.642 rows=36 loops=1)
+                                                   Buffers: shared hit=57
+                                                   ->  Bitmap Heap Scan on "Order_y2026_m05" o  (cost=4.48..38.35 rows=16 width=59) (actual time=0.104..0.228 rows=14 loops=1)
+                                                         Recheck Cond: ((region = 'Latin America'::text) AND ("orderedAt" >= '2026-05-01 00:00:00'::timestamp without time zone) AND ("orderedAt" < '2026-05-02 00:00:00'::timestamp without time zone))
+                                                         Filter: (status <> 'CANCELLED'::"OrderStatus")
+                                                         Heap Blocks: exact=13
+                                                         Buffers: shared hit=15
+                                                         ->  Bitmap Index Scan on "Order_y2026_m05_region_orderedAt_idx"  (cost=0.00..4.48 rows=16 width=0) (actual time=0.064..0.064 rows=14 loops=1)
+                                                               Index Cond: ((region = 'Latin America'::text) AND ("orderedAt" >= '2026-05-01 00:00:00'::timestamp without time zone) AND ("orderedAt" < '2026-05-02 00:00:00'::timestamp without time zone))
+                                                               Buffers: shared hit=2
+                                                   ->  Index Scan using "OrderItem_orderId_orderedAt_idx" on "OrderItem" oi  (cost=0.29..8.06 rows=1 width=93) (actual time=0.025..0.027 rows=3 loops=14)
+                                                         Index Cond: (("orderId" = o.id) AND ("orderedAt" = o."orderedAt"))
+                                                         Buffers: shared hit=42
+                                             ->  Index Scan using "Product_pkey" on "Product" p  (cost=0.15..0.17 rows=1 width=96) (actual time=0.003..0.003 rows=1 loops=36)
+                                                   Index Cond: (id = oi."productId")
+                                                   Buffers: shared hit=72
+
+Planning Time: 7.147 ms
+Execution Time: 6.834 ms
+Total Database Time: 13.981 ms
+Planning Buffers: 533 shared hits
+Execution Buffers: 138 shared hits
+
+Improvement:
+- Execution Time: Reduced from 15.592 ms to 6.834 ms (56% improvement)
+- Total Database Time: Reduced from 17.915 ms to 13.981 ms (22% improvement)
+- Execution Buffers (Shared Hits): Reduced from 661 to 138 (79.1% reduction in disk reads/memory pressure!)
+
+Notes:
+1. The sequential scan on OrderItem was replaced by a highly targeted `Index Scan using "OrderItem_orderId_orderedAt_idx"`.
+2. The sequential scan on the Order partition was replaced by a `Bitmap Index Scan using "Order_y2026_m05_region_orderedAt_idx"`, retrieving only matching rows.
+3. This drastically improves horizontal scaling of regional product reports, especially under parallel requests where buffer access concurrency is key.

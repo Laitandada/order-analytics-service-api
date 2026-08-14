@@ -1,0 +1,98 @@
+Top Products Analytics — BEFORE Optimization
+==============================================
+
+Endpoint:
+GET /analytics/products/top
+
+Dataset:
+Seeded database (10k Orders, 25k OrderItems)
+
+Query:
+WITH product_sales AS (
+  SELECT 
+    o.region,
+    TO_CHAR(o."orderedAt", 'YYYY-MM') as month,
+    oi."productId",
+    p.name as "productName",
+    p.category as "productCategory",
+    SUM((oi.quantity)::numeric * oi."unitPrice")::float as revenue
+  FROM "OrderItem" oi
+  JOIN "Order" o ON oi."orderId" = o.id AND oi."orderedAt" = o."orderedAt"
+  JOIN "Product" p ON oi."productId" = p.id
+  WHERE o.status != 'CANCELLED'
+    AND o.region = 'Latin America'
+    AND o."orderedAt" >= '2026-05-01 00:00:00' AND o."orderedAt" < '2026-05-02 00:00:00'
+  GROUP BY o.region, TO_CHAR(o."orderedAt", 'YYYY-MM'), oi."productId", p.name, p.category
+),
+ranked_sales AS (
+  SELECT 
+    region,
+    month,
+    "productId",
+    "productName",
+    "productCategory",
+    revenue,
+    DENSE_RANK() OVER (
+      PARTITION BY region, month
+      ORDER BY revenue DESC
+    )::integer as rank
+  FROM product_sales
+)
+SELECT * 
+FROM ranked_sales
+WHERE rank <= 20
+ORDER BY region, month, rank;
+
+EXPLAIN ANALYZE Output (Before Optimization):
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=1014.06..1014.11 rows=2 width=159) (actual time=15.415..15.425 rows=16 loops=1)
+   Sort Key: ranked_sales.region, ranked_sales.month, ranked_sales.rank
+   Presorted Key: ranked_sales.region, ranked_sales.month
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+   Buffers: shared hit=661
+   ->  Subquery Scan on ranked_sales  (cost=1014.01..1014.05 rows=1 width=159) (actual time=15.308..15.368 rows=16 loops=1)
+         Filter: (ranked_sales.rank <= 20)
+         Buffers: shared hit=655
+         ->  WindowAgg  (cost=1014.01..1014.04 rows=1 width=159) (actual time=15.306..15.362 rows=16 loops=1)
+               Buffers: shared hit=655
+               ->  Sort  (cost=1014.01..1014.02 rows=1 width=155) (actual time=15.266..15.272 rows=16 loops=1)
+                     Sort Key: product_sales.region, product_sales.month, product_sales.revenue DESC
+                     Sort Method: quicksort  Memory: 27kB
+                     Buffers: shared hit=655
+                     ->  Subquery Scan on product_sales  (cost=1013.96..1014.00 rows=1 width=155) (actual time=15.187..15.227 rows=16 loops=1)
+                           Buffers: shared hit=652
+                           ->  GroupAggregate  (cost=1013.96..1014.00 rows=1 width=155) (actual time=15.185..15.222 rows=16 loops=1)
+                                 Group Key: (to_char(o."orderedAt", 'YYYY-MM'::text)), oi."productId", p.name, p.category
+                                 Buffers: shared hit=652
+                                 ->  Sort  (cost=1013.96..1013.97 rows=1 width=158) (actual time=15.141..15.147 rows=36 loops=1)
+                                       Sort Key: (to_char(o."orderedAt", 'YYYY-MM'::text)), oi."productId", p.name, p.category
+                                       Sort Method: quicksort  Memory: 29kB
+                                       Buffers: shared hit=652
+                                       ->  Nested Loop  (cost=102.35..1013.95 rows=1 width=158) (actual time=4.461..15.078 rows=36 loops=1)
+                                             Buffers: shared hit=652
+                                             ->  Hash Join  (cost=102.20..1013.78 rows=1 width=70) (actual time=1.411..11.897 rows=36 loops=1)
+                                                   Hash Cond: ((oi."orderId" = o.id) AND (oi."orderedAt" = o."orderedAt"))
+                                                   Buffers: shared hit=580
+                                                   ->  Seq Scan on "OrderItem" oi  (cost=0.00..780.56 rows=24956 width=93) (actual time=0.020..4.020 rows=24956 loops=1)
+                                                         Buffers: shared hit=531
+                                                   ->  Hash  (cost=101.96..101.96 rows=16 width=59) (actual time=0.717..0.717 rows=14 loops=1)
+                                                         Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                                         Buffers: shared hit=49
+                                                         ->  Seq Scan on "Order_y2026_m05" o  (cost=0.00..101.96 rows=16 width=59) (actual time=0.052..0.704 rows=14 loops=1)
+                                                               Filter: ((status <> 'CANCELLED'::"OrderStatus") AND ("orderedAt" >= '2026-05-01 00:00:00'::timestamp without time zone) AND ("orderedAt" < '2026-05-02 00:00:00'::timestamp without time zone) AND (region = 'Latin America'::text))
+                                                               Rows Removed by Filter: 2634
+                                                               Buffers: shared hit=49
+                                             ->  Index Scan using "Product_pkey" on "Product" p  (cost=0.15..0.17 rows=1 width=96) (actual time=0.002..0.002 rows=1 loops=36)
+                                                   Index Cond: (id = oi."productId")
+                                                   Buffers: shared hit=72
+
+Planning Time: 2.323 ms
+Execution Time: 15.592 ms
+Total Database Time: 17.915 ms
+Planning Buffers: 423 shared hits
+Execution Buffers: 661 shared hits
+
+Notes:
+1. Sequential scan on OrderItem (Seq Scan on "OrderItem" oi) read all 24,956 rows of the table for every execution, resulting in 531 buffer hits just on the items table.
+2. Sequential scan on the Order_y2026_m05 partition (Seq Scan on "Order_y2026_m05" o) filtered all 2,648 partition rows, ignoring index scanning due to lack of a composite region index.
+3. High buffer hit count (661 shared hits) during execution, which scales poorly as the dataset grows.

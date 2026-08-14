@@ -1,20 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { ReadPrismaService } from '../read-prisma.service.js';
+import { DatabaseService } from '../database/database.service.js';
 import { CustomerRevenueDto } from './dto/customer-revenue.dto.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { TopProductsDto } from './dto/top-products.dto.js';
 
 @Injectable()
 export class AnalyticsRepository {
-  // Analytics queries are routed to the read replica.
-  // These aggregations tolerate slight replication lag (seconds).
-  constructor(private readPrisma: ReadPrismaService) {}
+  constructor(private db: DatabaseService) {}
 
   async getCustomerRevenue(dto: CustomerRevenueDto): Promise<any[]> {
     const days = dto.days ?? 90;
     const thresholdDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    return this.readPrisma.$queryRaw<any[]>`
+    return this.db.replica.$queryRaw<any[]>`
       SELECT o."customerId", c.name, c.email, SUM(o."totalAmount")::float as revenue
       FROM "Order" o
       JOIN "Customer" c ON o."customerId" = c.id
@@ -47,7 +45,7 @@ export class AnalyticsRepository {
         ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
         : Prisma.empty;
 
-    return this.readPrisma.$queryRaw<any[]>`
+    return this.db.replica.$queryRaw<any[]>`
       WITH product_sales AS (
         SELECT 
           o.region,

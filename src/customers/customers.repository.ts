@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ReadPrismaService } from '../read-prisma.service.js';
+import { DatabaseService } from '../database/database.service.js';
 import { CustomerOrdersQueryDto } from './dto/customer-orders-query.dto.js';
 
 @Injectable()
 export class CustomersRepository {
-  // Paginated order history is routed to the read replica.
-  // Users browsing historical pages tolerate a few seconds of replication lag.
-  constructor(private readPrisma: ReadPrismaService) {}
+  constructor(private db: DatabaseService) {}
 
   async findCustomerOrders(
     customerId: string,
@@ -33,7 +31,7 @@ export class CustomersRepository {
           }
         : {};
 
-    return this.readPrisma.order.findMany({
+    return this.db.replica.order.findMany({
       where: {
         customerId,
         ...cursorCondition,

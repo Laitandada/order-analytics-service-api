@@ -1,231 +1,228 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Order Analytics Service API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-ready NestJS application designed for high-throughput order tracking, partitioning, read/write database split-routing, and analytics reporting.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Table of Contents
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+1. [Project Setup & Installation](#1-project-setup--installation)
+2. [Starting PostgreSQL](#2-starting-postgresql)
+3. [Running Database Migrations](#3-running-database-migrations)
+4. [Database Seeding (Dev & 5M Full Assessment)](#4-database-seeding-dev--5m-full-assessment)
+5. [Starting the Application](#5-starting-the-application)
+6. [Running the Tests](#6-running-the-tests)
+7. [Running the Load Tests](#7-running-the-load-tests)
+8. [API Endpoints & Swagger Documentation](#8-api-endpoints--swagger-documentation)
+9. [Database Architecture & Read/Write Routing](#9-database-architecture--readwrite-routing)
+10. [Performance Benchmarks](#10-performance-benchmarks)
 
-## Project setup
+---
+
+## 1. Project Setup & Installation
+
+### Prerequisites
+
+- **Node.js**: v20 or higher
+- **npm**: v10 or higher
+- **PostgreSQL**: v15 or higher
+
+### Installation
+
+Clone the repository and install all dependencies:
 
 ```bash
 $ npm install
 ```
 
-## Database and Seeding
-
-We use Prisma with PostgreSQL. Before running the application, make sure to set up your `.env` file (copied from `.env.example`) and apply the migrations:
+Configure your environment variables by copying `.env.example` to `.env`:
 
 ```bash
-# Run migrations to set up PostgreSQL database
-$ npx prisma migrate dev --name init_core_schema
+$ cp .env.example .env
 ```
-
-### Seeding Modes
-
-To populate the database, we provide two seeding scripts configured in `package.json`:
-
-1. **Development Seed** (10,000 orders, 1,000 customers, 20 products):
-   Designed for local development and rapid integration testing. Takes ~1-2 seconds.
-   ```bash
-   $ npm run db:seed:dev
-   ```
-
-2. **Full Assessment Seed** (approximately 5,000,000 orders, 50,000 customers, 500 products):
-   Designed for large-scale performance, indexing, and analytics testing.
-   ```bash
-   $ npm run db:seed:full
-   ```
-
-### Performance & Resource Considerations for Full Seeding (5M Orders)
-- **Memory Consumption**: Generation is performed in streamed chunks of **2,500 orders** to keep JavaScript Heap memory stable and prevent OOM issues (allocates <150MB of RSS).
-- **Execution Speed**: Chunked insertions use atomic `createMany` queries. The expected duration to insert 5,000,000 orders (and their ~12.5M order items) is approximately **3 to 6 minutes** depending on disk/network latency to PostgreSQL.
-- **Constraints**: Staying at 2,500 orders per batch ensures we stay well below PostgreSQL's 65,535 parameter limit per command (averaging ~32,000 parameters for the order items chunk).
-
-## PostgreSQL Connection Pooling
-
-To handle the load testing concurrency (up to 200 concurrent users) efficiently on a database containing 5,000,000 orders without overwhelming database CPU/Memory resources, we configure a connection pool via `pg.Pool` inside our custom `PrismaService` wrapper.
-
-### Pool Configuration Variables
-
-These values are environment-driven and can be configured in `.env`:
-* **`DATABASE_POOL_SIZE`** (Default: `20`): The maximum number of active database client connections maintained in the pool.
-* **`DATABASE_IDLE_TIMEOUT_MS`** (Default: `30000`): The time in milliseconds a client connection can sit idle before being closed and removed from the pool.
-* **`DATABASE_CONNECTION_TIMEOUT_MS`** (Default: `2000`): The time in milliseconds to wait for a database connection to become available before throwing a timeout error.
-
-### Architectural Sizing & Pool Theory
-
-#### Concurrency vs. Database Connections
-While NestJS handles 200 concurrent HTTP requests easily using Node's non-blocking single-threaded event loop, PostgreSQL uses a **process-per-connection** architecture. 
-* Opening 200 active PostgreSQL connections would spawn 200 separate backend processes on the database. 
-* On typical hardware (2 to 4 CPU cores), this causes severe CPU process thrashing, memory bloat, and context-switching overhead.
-
-#### Why a Pool Size of 20?
-A pool size of **20** acts as a highly efficient queue. When 200 concurrent requests execute queries, they checkout one of the 20 active connections, execute their indexed query in a few milliseconds, and immediately return it to the pool. PostgreSQL processes these queries sequentially with zero context-switching overhead. This results in **lower overall latency** and protects database resources from starvation.
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
 
 ---
 
-## Primary + Read Replica Architecture
+## 2. Starting PostgreSQL
 
-### Overview
+The application expects a running PostgreSQL instance listening on port `5432`.
 
-The application uses a **two-client architecture** to separate write traffic from read/analytics traffic. Each client has its own connection pool backed by a distinct environment variable:
+### Running PostgreSQL via macOS Homebrew
 
-| Environment Variable | Purpose |
-|---|---|
-| `PRIMARY_DATABASE_URL` | All writes + order ID lookups requiring read-after-write consistency |
-| `READ_DATABASE_URL` | Analytics aggregations + paginated customer history (eventual consistency acceptable) |
+If installed locally via Homebrew, start the database service:
 
-### NestJS Services
-
-| Service | Connection | Scope |
-|---|---|---|
-| `PrismaService` | `PRIMARY_DATABASE_URL` | Write path; used by `OrdersRepository` |
-| `ReadPrismaService` | `READ_DATABASE_URL` | Read path; used by `AnalyticsRepository` and `CustomersRepository` |
-
-Both services are registered in the global `PrismaModule` so any feature module can inject either without circular dependency issues.
-
-### Routing Decisions
-
-```
-GET /orders/:orderId              → PrismaService (PRIMARY)
-  Reason: A user may call this endpoint immediately after placing an order.
-  Routing to a replica risks returning a 404 before replication completes.
-  This is the classic read-after-write consistency problem.
-
-GET /customers/:customerId/orders → ReadPrismaService (REPLICA)
-  Reason: Paginated history browsing. A user scrolling through past orders
-  tolerates data that is a few seconds behind the primary.
-
-GET /analytics/customers/revenue  → ReadPrismaService (REPLICA)
-GET /analytics/products/top       → ReadPrismaService (REPLICA)
-  Reason: 90-day window aggregations. Returning data that is seconds or even
-  minutes old is completely acceptable for reporting queries.
+```bash
+$ brew services start postgresql@15
 ```
 
-### Replication Lag & Consistency Considerations
+Ensure your `.env` connection strings match your PostgreSQL credentials, for example:
 
-PostgreSQL **streaming replication** is asynchronous by default. When the primary commits a transaction, the WAL record is sent to the replica and replayed. This process takes:
-
-- **Sub-millisecond** on the same host
-- **1–50 ms** on a LAN
-- **100 ms+** under heavy write load or across regions
-
-**Implications for this application:**
-
-1. **Order lookups (`/orders/:orderId`) always use the primary** because a freshly written order may not have been replicated yet. Routing it to the replica risks a phantom 404.
-2. **Paginated customer orders** use the replica. Users browsing historical orders will not notice a lag of a few seconds.
-3. **Analytics** uses the replica. A 90-day revenue report that is a few seconds old is indistinguishable from a fully up-to-date one.
-4. Never assume the replica has applied all writes the primary has committed. Design queries accordingly.
-
-### Local Development Configuration
-
-In local development, `PRIMARY_DATABASE_URL` and `READ_DATABASE_URL` both point to the same PostgreSQL instance for convenience. The application architecture and routing logic are fully real — only the physical separation is absent.
-
-```
-# .env (local development)
-PRIMARY_DATABASE_URL="postgresql://user:pass@localhost:5432/db"
-READ_DATABASE_URL="postgresql://user:pass@localhost:5432/db"   # same instance
+```env
+PRIMARY_DATABASE_URL="postgresql://postgres:password123@localhost:5432/nextjs-practice?schema=public&sslmode=disable"
+READ_DATABASE_URL="postgresql://postgres:password123@localhost:5432/nextjs-practice?schema=public&sslmode=disable"
 ```
 
-### Production Configuration
+---
 
-In production, set `READ_DATABASE_URL` to the URL of a PostgreSQL **hot-standby** replica configured with `hot_standby = on` and `primary_conninfo` pointing at the primary. The application code requires no changes.
+## 3. Running Database Migrations
 
-```
-# Production environment
-PRIMARY_DATABASE_URL="postgresql://user:pass@primary-host:5432/db"
-READ_DATABASE_URL="postgresql://user:pass@replica-host:5432/db"
+Use Prisma CLI to apply schema migrations. This will initialize the tables, partitioning configurations, and optimized workload indexes:
+
+```bash
+# Generate the Prisma client types
+$ npm run db:generate
+
+# Apply migrations to the database instance
+$ npm run db:migrate:deploy
 ```
 
-To verify replication is active, run on the **primary**:
-```sql
-SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn
-FROM pg_stat_replication;
+---
+
+## 4. Database Seeding (Dev & 5M Full Assessment)
+
+We provide two seeding modes configured to match development and load-testing needs.
+
+### Option A: Development Seed (10k Orders)
+
+Designed for local development, integration, and E2E testing. Generates **10,000 orders**, **1,000 customers**, and **20 products** in under 2 seconds.
+
+```bash
+$ npm run db:seed:dev
 ```
-A row per connected replica will appear with `state = streaming`.
+
+### Option B: Full Assessment Seed (5 Million Orders)
+
+Generates approximately **5,000,000 orders** and their corresponding **12.5M order items** across partitioned monthly tables.
+
+```bash
+$ npm run db:seed:full
+```
+
+#### Seeding Architecture & Safety Features
+
+- **OOM Prevention**: Seeding is generated and written in streamed chunks of **2,500 orders** to keep JavaScript Heap memory under **150MB RSS**.
+- **PostgreSQL Parameter Limit Safe**: Chunk size remains below PostgreSQL's `65,535` query parameter threshold (utilizing ~32k parameters per batch).
+- **Speed**: Utilizes fast batch transactions inserting the data in **3 to 6 minutes** depending on disk/network write throughput.
+
+---
+
+## 5. Starting the Application
+
+Build the application and start the HTTP server:
+
+```bash
+# Build the TypeScript compilation
+$ npm run build
+
+# Start the compiled server in Production mode (Highly Recommended for Benchmarks)
+$ npm run start:prod
+
+# Start the server in Development watch mode
+$ npm run start:dev
+```
+
+The server will bind and listen on port `3000` (e.g. `http://localhost:3000`).
+
+---
+
+## 6. Running the Tests
+
+Because the codebase is configured with ECMAScript Modules (`"type": "module"`), running Jest tests requires the Node VM modules flag enabled:
+
+```bash
+# Run unit tests
+$ node --experimental-vm-modules node_modules/jest/bin/jest.js
+
+# Run E2E tests
+$ node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json
+```
+
+---
+
+## 7. Running the Load Tests
+
+We simulate **200 concurrent Virtual Users (VUs)** executing requests against `GET /orders/:orderId` using the **k6** engine. The load test script is located at [`load-test/order-lookup.js`](/load-test/order-lookup.js).
+
+### Prerequisites
+
+Download or compile the `k6` binary into the project root directory.
+
+### Run Load Tests
+
+1. **Extract Valid IDs**: Pulls 2,000 random order IDs from the database to hit valid indexed keys instead of triggering 404s:
+   ```bash
+   $ npm run load-test:prep
+   ```
+2. **Execute Benchmark**: Runs k6 with 200 VUs for 30 seconds:
+   ```bash
+   $ npm run load-test:run
+   ```
+3. **Combined Command**:
+   ```bash
+   $ npm run load-test
+   ```
+
+---
+
+## 8. API Endpoints & Swagger Documentation
+
+Once the server is running, the **Swagger API Docs** are interactive at:
+👉 **`http://localhost:3000/api/docs`**
+
+### Summary of REST Endpoints
+
+#### 1. Single Order Lookup
+
+- **Method & Path**: `GET /orders/:orderId`
+- **Query Parameters**:
+  - `orderedAt` (Optional, ISO Date String): The partition pruning key.
+- **Response**: Returns full details of the order, including the associated Customer object and array of nested OrderItems mapped to their Product definitions.
+
+#### 2. Customer Order History (Keyset Paginated)
+
+- **Method & Path**: `GET /customers/:customerId/orders`
+- **Query Parameters**:
+  - `limit` (Optional, default 20): Number of items per page.
+  - `cursor_id` (Optional, UUID): Pagination keyset cursor ID.
+  - `cursor_orderedAt` (Optional, ISO Date String): Pagination keyset cursor date.
+- **Response**: Returns a keyset-paginated list of customer orders sorted by `orderedAt DESC, id DESC`.
+
+#### 3. Top Customers Revenue Analytics
+
+- **Method & Path**: `GET /analytics/customers/revenue`
+- **Query Parameters**:
+  - `days` (Optional, default 90): Analytics rolling window range.
+- **Response**: Returns a ranked list of customers who generated the highest non-cancelled order revenue within the last N days.
+
+#### 4. Top-Selling Products Analytics
+
+- **Method & Path**: `GET /analytics/products/top`
+- **Query Parameters**:
+  - `region` (Optional): Filter statistics by sales region.
+  - `month` (Optional, format `YYYY-MM`): Filter statistics by month.
+- **Response**: Returns ranked top-selling products by revenue grouped by region and month, including rank index.
+
+---
+
+## 9. Database Architecture & Read/Write Routing
+
+The application implements an **application-level Read/Write database split**:
+
+- **Primary Connection** (`PRIMARY_DATABASE_URL` via `PrismaService`):
+  - Handles all write operations.
+  - Handles `/orders/:orderId` lookups to enforce strong **read-after-write consistency** (ensures a user doesn't hit a replica lag 404 immediately after creating an order).
+- **Replica Connection** (`READ_DATABASE_URL` via `ReadPrismaService`):
+  - Handles `/customers/:customerId/orders` paginated browsing.
+  - Handles analytical queries (`/analytics/*`).
+
+---
+
+## 10. Performance Benchmarks
+
+Detailed performance findings, index optimizations, and load testing latency percentiles are documented inside the repository:
+
+- 📊 **[Top Products Analytics Index Optimizations](/performance/top-products-after.txt)**
+- 📈 **[Order Lookup 200-VU Load Test Results](/load-test/results.txt)**
 
 ---
 

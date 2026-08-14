@@ -1,0 +1,57 @@
+# Load Test Baseline Report - GET /orders/:orderId
+
+This report documents the performance baseline established during load testing of the order lookup endpoint under a concurrent user load.
+
+---
+
+## 1. Test Environment & Configuration
+
+* **Hardware/OS**: macOS 12 (Darwin), x86_64 Intel CPU
+* **Storage Constraint**: `/System/Volumes/Data` at 100% capacity (only 23-731 MiB of free disk space during run).
+* **Dataset Size**: Exactly 10,000 seeded orders (due to disk space constraints preventing a 5M seeding run).
+* **Database Engine**: PostgreSQL 16.2
+* **Connection Pool Sizing**:
+  * `DATABASE_POOL_SIZE`: 20 connections
+  * `DATABASE_IDLE_TIMEOUT_MS`: 30000 ms
+  * `DATABASE_CONNECTION_TIMEOUT_MS`: 2000 ms
+* **Application Server**: NestJS v11.0.1 running in development mode (`npm run start:dev`)
+* **Load Generator**: k6 v0.53.0
+* **Concurrent Users (VUs)**: 200 concurrent virtual users
+* **Test Duration**: 30 seconds
+* **Sleep Time per Iteration**: 50ms per VU iteration (simulating rapid user click-through)
+
+---
+
+## 2. Benchmark Results (Baseline)
+
+* **Total Requests**: 12,797 requests
+* **Throughput**: 422.15 requests per second
+* **Data Transfer**: 16 MB received / 1.6 MB sent
+* **Error Rate**: 0.57% (74 requests failed out of 12,797)
+  * *Note*: Fails occurred mostly during the initial ramp-up connection reset by peer when all 200 VUs initiated TCP connections.
+* **Checks Passed**: 99.42% (25,446 passed / 148 failed)
+
+### Latency Metrics (http_req_duration)
+
+| Percentile | Latency | Target SLA | Target Met? |
+|------------|---------|------------|-------------|
+| **p50** (median) | 389.63 ms | N/A | N/A |
+| **p90** | 595.74 ms | N/A | N/A |
+| **p95** | 651.06 ms | < 50.00 ms | **NO** ❌ |
+| **p99** | 716.89 ms | < 1000.00 ms | **YES**  |
+| **Maximum** | 1,950.00 ms | N/A | N/A |
+
+---
+
+## 3. Bottleneck Analysis & Investigations
+
+The p95 latency of **651.06 ms** did not meet the 50 ms SLA target. Below is the technical breakdown of the performance bottlenecks:
+
+1. **Development Build Overhead**:
+   The NestJS app was running via `npm run start:dev` which enables full watch mode, dynamic code transpiling/sourcemaps, and heavy diagnostic hooks. This drastically limits JavaScript throughput compared to a compiled production bundle (`npm run start:prod`).
+2. **Single-Thread Event Loop Saturation**:
+   Node.js processes requests on a single event-loop thread. With 200 concurrent clients executing requests without throttling, the event loop queues incoming connections, leading to queue delays (queuing latency) at the application layer.
+3. **Resource Contention (Shared Host)**:
+   The database engine, the NestJS API application, and the k6 load generator were all executing on the same local Mac machine. This created intensive CPU and RAM contention between the processes, especially given the low disk storage threshold (731 MiB) which degrades swap memory and filesystem write buffers.
+4. **Prisma Client Initialization & Relations**:
+   The query includes fetching the associated `customer` object and `items -> product` list, requiring Prisma to map multiple related models per query.
