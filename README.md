@@ -144,6 +144,91 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 - Website - [https://nestjs.com](https://nestjs.com/)
 - Twitter - [@nestframework](https://twitter.com/nestframework)
 
+
+---
+
+## Primary + Read Replica Architecture
+
+### Overview
+
+The application uses a **two-client architecture** to separate write traffic from read/analytics traffic. Each client has its own connection pool backed by a distinct environment variable:
+
+| Environment Variable | Purpose |
+|---|---|
+| `PRIMARY_DATABASE_URL` | All writes + order ID lookups requiring read-after-write consistency |
+| `READ_DATABASE_URL` | Analytics aggregations + paginated customer history (eventual consistency acceptable) |
+
+### NestJS Services
+
+| Service | Connection | Scope |
+|---|---|---|
+| `PrismaService` | `PRIMARY_DATABASE_URL` | Write path; used by `OrdersRepository` |
+| `ReadPrismaService` | `READ_DATABASE_URL` | Read path; used by `AnalyticsRepository` and `CustomersRepository` |
+
+Both services are registered in the global `PrismaModule` so any feature module can inject either without circular dependency issues.
+
+### Routing Decisions
+
+```
+GET /orders/:orderId              → PrismaService (PRIMARY)
+  Reason: A user may call this endpoint immediately after placing an order.
+  Routing to a replica risks returning a 404 before replication completes.
+  This is the classic read-after-write consistency problem.
+
+GET /customers/:customerId/orders → ReadPrismaService (REPLICA)
+  Reason: Paginated history browsing. A user scrolling through past orders
+  tolerates data that is a few seconds behind the primary.
+
+GET /analytics/customers/revenue  → ReadPrismaService (REPLICA)
+GET /analytics/products/top       → ReadPrismaService (REPLICA)
+  Reason: 90-day window aggregations. Returning data that is seconds or even
+  minutes old is completely acceptable for reporting queries.
+```
+
+### Replication Lag & Consistency Considerations
+
+PostgreSQL **streaming replication** is asynchronous by default. When the primary commits a transaction, the WAL record is sent to the replica and replayed. This process takes:
+
+- **Sub-millisecond** on the same host
+- **1–50 ms** on a LAN
+- **100 ms+** under heavy write load or across regions
+
+**Implications for this application:**
+
+1. **Order lookups (`/orders/:orderId`) always use the primary** because a freshly written order may not have been replicated yet. Routing it to the replica risks a phantom 404.
+2. **Paginated customer orders** use the replica. Users browsing historical orders will not notice a lag of a few seconds.
+3. **Analytics** uses the replica. A 90-day revenue report that is a few seconds old is indistinguishable from a fully up-to-date one.
+4. Never assume the replica has applied all writes the primary has committed. Design queries accordingly.
+
+### Local Development Configuration
+
+In local development, `PRIMARY_DATABASE_URL` and `READ_DATABASE_URL` both point to the same PostgreSQL instance for convenience. The application architecture and routing logic are fully real — only the physical separation is absent.
+
+```
+# .env (local development)
+PRIMARY_DATABASE_URL="postgresql://user:pass@localhost:5432/db"
+READ_DATABASE_URL="postgresql://user:pass@localhost:5432/db"   # same instance
+```
+
+### Production Configuration
+
+In production, set `READ_DATABASE_URL` to the URL of a PostgreSQL **hot-standby** replica configured with `hot_standby = on` and `primary_conninfo` pointing at the primary. The application code requires no changes.
+
+```
+# Production environment
+PRIMARY_DATABASE_URL="postgresql://user:pass@primary-host:5432/db"
+READ_DATABASE_URL="postgresql://user:pass@replica-host:5432/db"
+```
+
+To verify replication is active, run on the **primary**:
+```sql
+SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn
+FROM pg_stat_replication;
+```
+A row per connected replica will appear with `state = streaming`.
+
+---
+
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
