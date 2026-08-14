@@ -5,6 +5,8 @@ import { TopProductsDto } from "./dto/top-products.dto.js";
 
 import { CustomerRevenueResponseDto } from "./dto/customer-revenue-response.dto.js";
 
+import { TopProductRankDto } from "./dto/top-products-response.dto.js";
+
 @Injectable()
 export class AnalyticsService {
   constructor(private analyticsRepo: AnalyticsRepository) {}
@@ -19,7 +21,16 @@ export class AnalyticsService {
     }));
   }
 
-  async getTopProducts(dto: TopProductsDto): Promise<any[]> {
-    return this.analyticsRepo.getTopProducts(dto);
+  async getTopProducts(dto: TopProductsDto): Promise<TopProductRankDto[]> {
+    const rawData = await this.analyticsRepo.getTopProducts(dto);
+    return rawData.map((row: any) => ({
+      region: row.region,
+      month: row.month,
+      productId: row.productId,
+      productName: row.productName,
+      productCategory: row.productCategory,
+      revenue: Number(row.revenue),
+      rank: Number(row.rank),
+    }));
   }
 }

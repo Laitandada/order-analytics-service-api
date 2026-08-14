@@ -8,7 +8,8 @@ describe("AnalyticsService", () => {
   let repository: AnalyticsRepository;
 
   const mockAnalyticsRepository = {
-    getCustomerRevenue: jest.fn()
+    getCustomerRevenue: jest.fn(),
+    getTopProducts: jest.fn()
   };
 
   beforeEach(async () => {
@@ -68,6 +69,60 @@ describe("AnalyticsService", () => {
           name: "Alice Jones",
           email: "alice@example.com",
           revenue: 150.25
+        }
+      ]);
+    });
+  });
+
+  describe("getTopProducts", () => {
+    it("should return mapped TopProductRankDto list", async () => {
+      const mockRawRows = [
+        {
+          region: "North America",
+          month: "2026-05",
+          productId: "prod-1",
+          productName: "Widgets",
+          productCategory: "Gadgets",
+          revenue: "3500.50",
+          rank: "1"
+        },
+        {
+          region: "North America",
+          month: "2026-05",
+          productId: "prod-2",
+          productName: "Gadgets Plus",
+          productCategory: "Gadgets",
+          revenue: 2000.25,
+          rank: 2
+        }
+      ];
+
+      mockAnalyticsRepository.getTopProducts.mockResolvedValue(mockRawRows);
+
+      const result = await service.getTopProducts({ region: "North America", month: "2026-05" });
+
+      expect(mockAnalyticsRepository.getTopProducts).toHaveBeenCalledWith({
+        region: "North America",
+        month: "2026-05"
+      });
+      expect(result).toEqual([
+        {
+          region: "North America",
+          month: "2026-05",
+          productId: "prod-1",
+          productName: "Widgets",
+          productCategory: "Gadgets",
+          revenue: 3500.50,
+          rank: 1
+        },
+        {
+          region: "North America",
+          month: "2026-05",
+          productId: "prod-2",
+          productName: "Gadgets Plus",
+          productCategory: "Gadgets",
+          revenue: 2000.25,
+          rank: 2
         }
       ]);
     });

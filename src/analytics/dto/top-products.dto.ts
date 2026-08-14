@@ -1,11 +1,12 @@
-import { IsString, IsNotEmpty } from "class-validator";
+import { IsString, IsOptional, Matches } from "class-validator";
 
 export class TopProductsDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  region: string;
+  region?: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  month: string; 
+  @Matches(/^\d{4}-\d{2}$/, { message: "month must be in YYYY-MM format" })
+  month?: string; 
 }

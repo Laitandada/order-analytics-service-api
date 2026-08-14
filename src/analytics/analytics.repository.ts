@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma.service.js";
 import { CustomerRevenueDto } from "./dto/customer-revenue.dto.js";
+import { Prisma } from "../generated/prisma/client.js";
 import { TopProductsDto } from "./dto/top-products.dto.js";
 
 @Injectable()
@@ -22,6 +23,60 @@ export class AnalyticsRepository {
   }
 
   async getTopProducts(dto: TopProductsDto): Promise<any[]> {
-    return [];
+    const conditions: Prisma.Sql[] = [];
+
+    conditions.push(Prisma.sql`o.status != 'CANCELLED'`);
+
+    if (dto.region) {
+      conditions.push(Prisma.sql`o.region = ${dto.region}`);
+    }
+
+    if (dto.month) {
+      const [year, monthStr] = dto.month.split("-").map(Number);
+      const startDate = new Date(Date.UTC(year, monthStr - 1, 1));
+      const endDate = new Date(Date.UTC(year, monthStr, 1));
+
+      conditions.push(Prisma.sql`o."orderedAt" >= ${startDate}`);
+      conditions.push(Prisma.sql`o."orderedAt" < ${endDate}`);
+    }
+
+    const whereClause = conditions.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<any[]>`
+      WITH product_sales AS (
+        SELECT 
+          o.region,
+          TO_CHAR(o."orderedAt", 'YYYY-MM') as month,
+          oi."productId",
+          p.name as "productName",
+          p.category as "productCategory",
+          SUM((oi.quantity)::numeric * oi."unitPrice")::float as revenue
+        FROM "OrderItem" oi
+        JOIN "Order" o ON oi."orderId" = o.id AND oi."orderedAt" = o."orderedAt"
+        JOIN "Product" p ON oi."productId" = p.id
+        ${whereClause}
+        GROUP BY o.region, TO_CHAR(o."orderedAt", 'YYYY-MM'), oi."productId", p.name, p.category
+      ),
+      ranked_sales AS (
+        SELECT 
+          region,
+          month,
+          "productId",
+          "productName",
+          "productCategory",
+          revenue,
+          DENSE_RANK() OVER (
+            PARTITION BY region, month
+            ORDER BY revenue DESC
+          )::integer as rank
+        FROM product_sales
+      )
+      SELECT * 
+      FROM ranked_sales
+      WHERE rank <= 20
+      ORDER BY region, month, rank;
+    `;
   }
 }

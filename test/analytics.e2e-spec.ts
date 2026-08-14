@@ -119,4 +119,44 @@ describe("AnalyticsController (e2e)", () => {
       expect(customerStats).toBeUndefined();
     });
   });
+
+  describe("GET /analytics/products/top", () => {
+    it("should return the top ranked products by region and month", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/analytics/products/top")
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      if (res.body.length > 0) {
+        const item = res.body[0];
+        expect(item).toHaveProperty("region");
+        expect(item).toHaveProperty("month");
+        expect(item).toHaveProperty("productId");
+        expect(item).toHaveProperty("productName");
+        expect(item).toHaveProperty("productCategory");
+        expect(item).toHaveProperty("revenue");
+        expect(item).toHaveProperty("rank");
+        expect(item.rank).toBeLessThanOrEqual(20);
+      }
+    });
+
+    it("should accept month filtering in YYYY-MM format", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/analytics/products/top?month=2026-05")
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      res.body.forEach((item: any) => {
+        expect(item.month).toBe("2026-05");
+      });
+    });
+
+    it("should reject invalid month format with 400 Bad Request", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/analytics/products/top?month=2026/05")
+        .expect(400);
+
+      expect(res.body.message).toContain("month must be in YYYY-MM format");
+    });
+  });
 });

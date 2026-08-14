@@ -5,6 +5,8 @@ import { TopProductsDto } from "./dto/top-products.dto.js";
 
 import { CustomerRevenueResponseDto } from "./dto/customer-revenue-response.dto.js";
 
+import { TopProductRankDto } from "./dto/top-products-response.dto.js";
+
 @Controller("analytics")
 export class AnalyticsController {
   constructor(private analyticsService: AnalyticsService) {}
@@ -14,8 +16,8 @@ export class AnalyticsController {
     return this.analyticsService.getCustomerRevenue(dto);
   }
 
-  @Get("top-products")
-  async getTopProducts(@Query() dto: TopProductsDto): Promise<any[]> {
+  @Get("products/top")
+  async getTopProducts(@Query() dto: TopProductsDto): Promise<TopProductRankDto[]> {
     return this.analyticsService.getTopProducts(dto);
   }
 }
