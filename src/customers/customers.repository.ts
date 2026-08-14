@@ -1,6 +1,6 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../prisma.service.js";
-import { CustomerOrdersQueryDto } from "./dto/customer-orders-query.dto.js";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma.service.js';
+import { CustomerOrdersQueryDto } from './dto/customer-orders-query.dto.js';
 
 @Injectable()
 export class CustomersRepository {
@@ -8,37 +8,35 @@ export class CustomersRepository {
 
   async findCustomerOrders(
     customerId: string,
-    dto: CustomerOrdersQueryDto
+    dto: CustomerOrdersQueryDto,
   ): Promise<any[]> {
     const limit = dto.limit ?? 20;
 
-    const cursorCondition = dto.cursorOrderedAt && dto.cursorOrderId
-      ? {
-          OR: [
-            {
-              orderedAt: {
-                lt: new Date(dto.cursorOrderedAt),
+    const cursorCondition =
+      dto.cursorOrderedAt && dto.cursorOrderId
+        ? {
+            OR: [
+              {
+                orderedAt: {
+                  lt: new Date(dto.cursorOrderedAt),
+                },
               },
-            },
-            {
-              orderedAt: new Date(dto.cursorOrderedAt),
-              id: {
-                lt: dto.cursorOrderId,
+              {
+                orderedAt: new Date(dto.cursorOrderedAt),
+                id: {
+                  lt: dto.cursorOrderId,
+                },
               },
-            },
-          ],
-        }
-      : {};
+            ],
+          }
+        : {};
 
     return this.prisma.order.findMany({
       where: {
         customerId,
         ...cursorCondition,
       },
-      orderBy: [
-        { orderedAt: "desc" },
-        { id: "desc" },
-      ],
+      orderBy: [{ orderedAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       include: {
         customer: true,

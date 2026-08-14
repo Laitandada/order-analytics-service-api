@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../prisma.service.js";
-import { CustomerRevenueDto } from "./dto/customer-revenue.dto.js";
-import { Prisma } from "../generated/prisma/client.js";
-import { TopProductsDto } from "./dto/top-products.dto.js";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma.service.js';
+import { CustomerRevenueDto } from './dto/customer-revenue.dto.js';
+import { Prisma } from '../generated/prisma/client.js';
+import { TopProductsDto } from './dto/top-products.dto.js';
 
 @Injectable()
 export class AnalyticsRepository {
@@ -32,7 +32,7 @@ export class AnalyticsRepository {
     }
 
     if (dto.month) {
-      const [year, monthStr] = dto.month.split("-").map(Number);
+      const [year, monthStr] = dto.month.split('-').map(Number);
       const startDate = new Date(Date.UTC(year, monthStr - 1, 1));
       const endDate = new Date(Date.UTC(year, monthStr, 1));
 
@@ -40,9 +40,10 @@ export class AnalyticsRepository {
       conditions.push(Prisma.sql`o."orderedAt" < ${endDate}`);
     }
 
-    const whereClause = conditions.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
-      : Prisma.empty;
+    const whereClause =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+        : Prisma.empty;
 
     return this.prisma.$queryRaw<any[]>`
       WITH product_sales AS (

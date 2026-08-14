@@ -1,18 +1,34 @@
-import { Injectable } from "@nestjs/common";
-import { OrdersRepository } from "./orders.repository.js";
-import { OrderLookupDto } from "./dto/order-lookup.dto.js";
+import { Injectable } from '@nestjs/common';
+import { OrdersRepository } from './orders.repository.js';
+import { OrderLookupDto } from './dto/order-lookup.dto.js';
+import { OrderResponseDto } from './dto/order-response.dto.js';
+import {
+  Order,
+  Customer,
+  OrderItem,
+  Product,
+} from '../generated/prisma/client.js';
 
-import { OrderResponseDto } from "./dto/order-response.dto.js";
+type OrderWithRelations = Order & {
+  customer: Customer;
+  items: (OrderItem & {
+    product: Product;
+  })[];
+};
 
 @Injectable()
 export class OrdersService {
   constructor(private ordersRepo: OrdersRepository) {}
 
-  async findOne(orderId: string, dto: OrderLookupDto): Promise<OrderResponseDto | null> {
-    const order = await this.ordersRepo.findOne(orderId, dto);
-    if (!order) {
+  async findOne(
+    orderId: string,
+    dto: OrderLookupDto,
+  ): Promise<OrderResponseDto | null> {
+    const rawOrder = await this.ordersRepo.findOne(orderId, dto);
+    if (!rawOrder) {
       return null;
     }
+    const order = rawOrder as OrderWithRelations;
 
     return {
       id: order.id,
@@ -28,7 +44,7 @@ export class OrdersService {
         email: order.customer.email,
         region: order.customer.region,
       },
-      items: order.items.map((item: any) => ({
+      items: order.items.map((item) => ({
         id: item.id,
         productId: item.productId,
         quantity: item.quantity,

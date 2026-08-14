@@ -1,11 +1,42 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
-import request from "supertest";
-import { App } from "supertest/types.js";
-import { AppModule } from "../src/app.module.js";
-import { PrismaService } from "../src/prisma.service.js";
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { App } from 'supertest/types.js';
+import { AppModule } from '../src/app.module.js';
+import { PrismaService } from '../src/prisma.service.js';
 
-describe("OrdersController (e2e)", () => {
+interface E2EOrderResponse {
+  id: string;
+  customerId: string;
+  status: string;
+  region: string;
+  totalAmount: number;
+  orderedAt: string;
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    region: string;
+  };
+  items: {
+    id: string;
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+    product: {
+      id: string;
+      name: string;
+      category: string;
+      price: number;
+    };
+  }[];
+}
+
+interface E2EErrorResponse {
+  message: string | string[];
+}
+
+describe('OrdersController (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let sampleOrderId: string;
@@ -13,7 +44,7 @@ describe("OrdersController (e2e)", () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule]
+      imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -21,8 +52,8 @@ describe("OrdersController (e2e)", () => {
       new ValidationPipe({
         whitelist: true,
         transform: true,
-        forbidNonWhitelisted: true
-      })
+        forbidNonWhitelisted: true,
+      }),
     );
     await app.init();
 
@@ -41,10 +72,10 @@ describe("OrdersController (e2e)", () => {
     await app.close();
   });
 
-  describe("GET /orders/:orderId", () => {
-    it("should return 200 and mapped order details when order exists", async () => {
+  describe('GET /orders/:orderId', () => {
+    it('should return 200 and mapped order details when order exists', async () => {
       if (!sampleOrderId) {
-        console.warn("Skipping test: No sample order found in database");
+        console.warn('Skipping test: No sample order found in database');
         return;
       }
 
@@ -52,26 +83,27 @@ describe("OrdersController (e2e)", () => {
         .get(`/orders/${sampleOrderId}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty("id", sampleOrderId);
-      expect(res.body).toHaveProperty("customerId");
-      expect(res.body).toHaveProperty("status");
-      expect(res.body).toHaveProperty("region");
-      expect(res.body).toHaveProperty("totalAmount");
-      expect(res.body).toHaveProperty("orderedAt");
-      expect(res.body).toHaveProperty("customer");
-      expect(res.body.customer).toHaveProperty("name");
-      expect(res.body).toHaveProperty("items");
-      expect(Array.isArray(res.body.items)).toBe(true);
-      if (res.body.items.length > 0) {
-        expect(res.body.items[0]).toHaveProperty("productId");
-        expect(res.body.items[0]).toHaveProperty("product");
-        expect(res.body.items[0].product).toHaveProperty("name");
+      const body = res.body as E2EOrderResponse;
+      expect(body).toHaveProperty('id', sampleOrderId);
+      expect(body).toHaveProperty('customerId');
+      expect(body).toHaveProperty('status');
+      expect(body).toHaveProperty('region');
+      expect(body).toHaveProperty('totalAmount');
+      expect(body).toHaveProperty('orderedAt');
+      expect(body).toHaveProperty('customer');
+      expect(body.customer).toHaveProperty('name');
+      expect(body).toHaveProperty('items');
+      expect(Array.isArray(body.items)).toBe(true);
+      if (body.items.length > 0) {
+        expect(body.items[0]).toHaveProperty('productId');
+        expect(body.items[0]).toHaveProperty('product');
+        expect(body.items[0].product).toHaveProperty('name');
       }
     });
 
-    it("should return 200 with partition pruning when orderedAt query param is supplied", async () => {
+    it('should return 200 with partition pruning when orderedAt query param is supplied', async () => {
       if (!sampleOrderId || !sampleOrderDate) {
-        console.warn("Skipping test: No sample order found in database");
+        console.warn('Skipping test: No sample order found in database');
         return;
       }
 
@@ -79,27 +111,32 @@ describe("OrdersController (e2e)", () => {
         .get(`/orders/${sampleOrderId}?orderedAt=${sampleOrderDate}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty("id", sampleOrderId);
-      expect(new Date(res.body.orderedAt).toISOString()).toBe(sampleOrderDate);
+      const body = res.body as E2EOrderResponse;
+      expect(body).toHaveProperty('id', sampleOrderId);
+      expect(new Date(body.orderedAt).toISOString()).toBe(sampleOrderDate);
     });
 
-    it("should return 400 when orderId is a malformed UUID", async () => {
+    it('should return 400 when orderId is a malformed UUID', async () => {
       const res = await request(app.getHttpServer())
-        .get("/orders/not-a-valid-uuid")
+        .get('/orders/not-a-valid-uuid')
         .expect(400);
 
-      expect(res.body).toHaveProperty("message");
-      expect(res.body.message).toContain("Validation failed");
+      const body = res.body as E2EErrorResponse;
+      expect(body).toHaveProperty('message');
+      expect(body.message).toContain('Validation failed');
     });
 
-    it("should return 404 when orderId is a valid UUID but does not exist", async () => {
-      const nonExistentUuid = "deadbeef-4000-4000-a000-000000000000";
+    it('should return 404 when orderId is a valid UUID but does not exist', async () => {
+      const nonExistentUuid = 'deadbeef-4000-4000-a000-000000000000';
       const res = await request(app.getHttpServer())
         .get(`/orders/${nonExistentUuid}`)
         .expect(404);
 
-      expect(res.body).toHaveProperty("message");
-      expect(res.body.message).toContain(`Order with ID ${nonExistentUuid} not found`);
+      const body = res.body as E2EErrorResponse;
+      expect(body).toHaveProperty('message');
+      expect(body.message).toContain(
+        `Order with ID ${nonExistentUuid} not found`,
+      );
     });
   });
 });

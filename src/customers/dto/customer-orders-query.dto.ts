@@ -1,5 +1,12 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsDateString } from "class-validator";
-import { Type } from "class-transformer";
+import {
+  IsOptional,
+  IsUUID,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CustomerOrdersQueryDto {
   @IsOptional()
@@ -10,7 +17,7 @@ export class CustomerOrdersQueryDto {
   limit?: number = 20;
 
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   cursorOrderId?: string;
 
   @IsOptional()

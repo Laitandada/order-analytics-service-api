@@ -1,8 +1,20 @@
-import { Injectable } from "@nestjs/common";
-import { CustomersRepository } from "./customers.repository.js";
-import { CustomerOrdersQueryDto } from "./dto/customer-orders-query.dto.js";
+import { Injectable } from '@nestjs/common';
+import { CustomersRepository } from './customers.repository.js';
+import { CustomerOrdersQueryDto } from './dto/customer-orders-query.dto.js';
+import { CustomerOrdersResponseDto } from './dto/customer-orders-response.dto.js';
+import {
+  Order,
+  Customer,
+  OrderItem,
+  Product,
+} from '../generated/prisma/client.js';
 
-import { CustomerOrdersResponseDto } from "./dto/customer-orders-response.dto.js";
+type OrderWithRelations = Order & {
+  customer: Customer;
+  items: (OrderItem & {
+    product: Product;
+  })[];
+};
 
 @Injectable()
 export class CustomersService {
@@ -10,23 +22,30 @@ export class CustomersService {
 
   async findCustomerOrders(
     customerId: string,
-    dto: CustomerOrdersQueryDto
+    dto: CustomerOrdersQueryDto,
   ): Promise<CustomerOrdersResponseDto> {
     const limit = dto.limit ?? 20;
-    const orders = await this.customersRepo.findCustomerOrders(customerId, dto);
+    const rawOrders = await this.customersRepo.findCustomerOrders(
+      customerId,
+      dto,
+    );
+    const orders = rawOrders as OrderWithRelations[];
 
-    let nextCursor: { cursorOrderId: string; cursorOrderedAt: string } | null = null;
+    let nextCursor: { cursorOrderId: string; cursorOrderedAt: string } | null =
+      null;
     const hasNextPage = orders.length === limit + 1;
 
     if (hasNextPage) {
       const nextOrder = orders.pop();
-      nextCursor = {
-        cursorOrderId: nextOrder.id,
-        cursorOrderedAt: nextOrder.orderedAt.toISOString(),
-      };
+      if (nextOrder) {
+        nextCursor = {
+          cursorOrderId: nextOrder.id,
+          cursorOrderedAt: nextOrder.orderedAt.toISOString(),
+        };
+      }
     }
 
-    const data = orders.map((order: any) => ({
+    const data = orders.map((order) => ({
       id: order.id,
       customerId: order.customerId,
       status: order.status,
@@ -40,7 +59,7 @@ export class CustomersService {
         email: order.customer.email,
         region: order.customer.region,
       },
-      items: order.items.map((item: any) => ({
+      items: order.items.map((item) => ({
         id: item.id,
         productId: item.productId,
         quantity: item.quantity,
