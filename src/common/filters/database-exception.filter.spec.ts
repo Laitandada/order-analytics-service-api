@@ -36,7 +36,7 @@ describe('DatabaseExceptionFilter', () => {
     filter.catch(error, mockHost);
 
     expect(mockStatus).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
-    expect(mockJson).toHaveBeenCalledWith("Bad input validation");
+    expect(mockJson).toHaveBeenCalledWith('Bad input validation');
   });
 
   it('should sanitize non-HttpException database errors to a generic 500 error', () => {

@@ -61,6 +61,27 @@ To populate the database, we provide two seeding scripts configured in `package.
 - **Execution Speed**: Chunked insertions use atomic `createMany` queries. The expected duration to insert 5,000,000 orders (and their ~12.5M order items) is approximately **3 to 6 minutes** depending on disk/network latency to PostgreSQL.
 - **Constraints**: Staying at 2,500 orders per batch ensures we stay well below PostgreSQL's 65,535 parameter limit per command (averaging ~32,000 parameters for the order items chunk).
 
+## PostgreSQL Connection Pooling
+
+To handle the load testing concurrency (up to 200 concurrent users) efficiently on a database containing 5,000,000 orders without overwhelming database CPU/Memory resources, we configure a connection pool via `pg.Pool` inside our custom `PrismaService` wrapper.
+
+### Pool Configuration Variables
+
+These values are environment-driven and can be configured in `.env`:
+* **`DATABASE_POOL_SIZE`** (Default: `20`): The maximum number of active database client connections maintained in the pool.
+* **`DATABASE_IDLE_TIMEOUT_MS`** (Default: `30000`): The time in milliseconds a client connection can sit idle before being closed and removed from the pool.
+* **`DATABASE_CONNECTION_TIMEOUT_MS`** (Default: `2000`): The time in milliseconds to wait for a database connection to become available before throwing a timeout error.
+
+### Architectural Sizing & Pool Theory
+
+#### Concurrency vs. Database Connections
+While NestJS handles 200 concurrent HTTP requests easily using Node's non-blocking single-threaded event loop, PostgreSQL uses a **process-per-connection** architecture. 
+* Opening 200 active PostgreSQL connections would spawn 200 separate backend processes on the database. 
+* On typical hardware (2 to 4 CPU cores), this causes severe CPU process thrashing, memory bloat, and context-switching overhead.
+
+#### Why a Pool Size of 20?
+A pool size of **20** acts as a highly efficient queue. When 200 concurrent requests execute queries, they checkout one of the 20 active connections, execute their indexed query in a few milliseconds, and immediately return it to the pool. PostgreSQL processes these queries sequentially with zero context-switching overhead. This results in **lower overall latency** and protects database resources from starvation.
+
 ## Compile and run the project
 
 ```bash
