@@ -31,6 +31,36 @@
 $ npm install
 ```
 
+## Database and Seeding
+
+We use Prisma with PostgreSQL. Before running the application, make sure to set up your `.env` file (copied from `.env.example`) and apply the migrations:
+
+```bash
+# Run migrations to set up PostgreSQL database
+$ npx prisma migrate dev --name init_core_schema
+```
+
+### Seeding Modes
+
+To populate the database, we provide two seeding scripts configured in `package.json`:
+
+1. **Development Seed** (10,000 orders, 1,000 customers, 20 products):
+   Designed for local development and rapid integration testing. Takes ~1-2 seconds.
+   ```bash
+   $ npm run db:seed:dev
+   ```
+
+2. **Full Assessment Seed** (approximately 5,000,000 orders, 50,000 customers, 500 products):
+   Designed for large-scale performance, indexing, and analytics testing.
+   ```bash
+   $ npm run db:seed:full
+   ```
+
+### Performance & Resource Considerations for Full Seeding (5M Orders)
+- **Memory Consumption**: Generation is performed in streamed chunks of **2,500 orders** to keep JavaScript Heap memory stable and prevent OOM issues (allocates <150MB of RSS).
+- **Execution Speed**: Chunked insertions use atomic `createMany` queries. The expected duration to insert 5,000,000 orders (and their ~12.5M order items) is approximately **3 to 6 minutes** depending on disk/network latency to PostgreSQL.
+- **Constraints**: Staying at 2,500 orders per batch ensures we stay well below PostgreSQL's 65,535 parameter limit per command (averaging ~32,000 parameters for the order items chunk).
+
 ## Compile and run the project
 
 ```bash
