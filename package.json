@@ -77,8 +77,19 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "useESM": true
+        }
+      ]
     },
+    "moduleNameMapper": {
+      "^(\\.\\.?/(?!node_modules).*)\\.js$": "$1"
+    },
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
