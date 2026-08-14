@@ -33,7 +33,7 @@ model Product {
 }
 
 model Order {
-  id          String      @id @default(uuid())
+  id          String      @default(uuid())
   customerId  String
   customer    Customer    @relation(fields: [customerId], references: [id])
   status      OrderStatus @default(PENDING)
@@ -42,12 +42,15 @@ model Order {
   orderedAt   DateTime    @default(now())
   createdAt   DateTime    @default(now())
   items       OrderItem[]
+
+  @@id([id, orderedAt])
 }
 
 model OrderItem {
   id        String   @id @default(uuid())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderedAt DateTime
+  order     Order    @relation(fields: [orderId, orderedAt], references: [id, orderedAt], onDelete: Cascade)
   productId String
   product   Product  @relation(fields: [productId], references: [id])
   quantity  Int

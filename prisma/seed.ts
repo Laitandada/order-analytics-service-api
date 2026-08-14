@@ -176,6 +176,7 @@ async function main() {
           orderItemsBatch.push({
             id: crypto.randomUUID(),
             orderId,
+            orderedAt,
             productId: product.id,
             quantity,
             unitPrice: product.price
