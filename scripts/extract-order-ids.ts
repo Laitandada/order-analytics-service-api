@@ -16,12 +16,15 @@ async function main() {
   try {
     await client.connect();
     
-    // Select 2,000 random order IDs from the Order table
-    const query = 'SELECT id FROM "Order" ORDER BY random() LIMIT 2000;';
-    const res = await client.query<{ id: string }>(query);
+    // Select 2,000 random order IDs and their dates from the Order table
+    const query = 'SELECT id, "orderedAt" FROM "Order" ORDER BY random() LIMIT 2000;';
+    const res = await client.query<{ id: string; orderedAt: Date | string }>(query);
     
-    const ids = res.rows.map(row => row.id);
-    console.log(`Extracted ${ids.length} valid order IDs.`);
+    const ids = res.rows.map(row => ({
+      id: row.id,
+      orderedAt: new Date(row.orderedAt).toISOString()
+    }));
+    console.log(`Extracted ${ids.length} valid order records.`);
 
     if (ids.length === 0) {
       console.warn('Warning: No orders found in the database. Ensure database has been seeded.');

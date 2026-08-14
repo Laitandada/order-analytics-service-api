@@ -18,11 +18,13 @@ export class PerfMiddleware implements NestMiddleware {
     perfStorage.run(store, () => {
       res.on('finish', () => {
         const totalDuration = performance.now() - store.requestStart;
-        
+
         // Calculate result/Prisma processing time
         store.prismaProcessDuration = Math.max(
           0,
-          totalDuration - store.connectionAcquireDuration - store.prismaQueryDuration,
+          totalDuration -
+            store.connectionAcquireDuration -
+            store.prismaQueryDuration,
         );
 
         if (req.originalUrl.includes('/orders/')) {

@@ -24,18 +24,19 @@ export default function () {
     fail('No valid order IDs loaded. Make sure to run the prep script first.');
   }
 
-  // Pick a random order ID from the pre-seeded dataset
+  // Pick a random order record from the pre-seeded dataset
   const randomIndex = Math.floor(Math.random() * orderIds.length);
-  const orderId = orderIds[randomIndex];
+  const order = orderIds[randomIndex];
+  const { id, orderedAt } = order;
   
-  const url = `http://localhost:3000/orders/${orderId}`;
+  const url = `http://localhost:3000/orders/${id}?orderedAt=${orderedAt}`;
   
   const res = http.get(url);
   
   // Assert response code is 200 OK
   check(res, {
     'status is 200': (r) => r.status === 200,
-    'has valid payload': (r) => r.body && r.body.includes(orderId),
+    'has valid payload': (r) => r.body && r.body.includes(id),
   });
 
   // Short pause between requests per virtual user to simulate user behavior

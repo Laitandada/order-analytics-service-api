@@ -4,7 +4,6 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { perfStorage } from './common/perf-storage.js';
 
-
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -32,7 +31,7 @@ export class PrismaService
     });
 
     const originalConnect = pool.connect.bind(pool);
-    pool.connect = (async function (...args: any[]) {
+    pool.connect = async function (...args: any[]) {
       const store = perfStorage.getStore();
       if (store) {
         const start = performance.now();
@@ -41,7 +40,7 @@ export class PrismaService
         return client;
       }
       return originalConnect(...args);
-    } as any);
+    } as any;
 
     const adapter = new PrismaPg(pool, { disposeExternalPool: true });
     // Enable Prisma-level query logging to capture generated SQL for analysis.
@@ -57,7 +56,9 @@ export class PrismaService
           const poolStats = this.pool
             ? `pool(total=${this.pool.totalCount},idle=${this.pool.idleCount},waiting=${this.pool.waitingCount})`
             : 'pool(n/a)';
-          console.log(`[Prisma] query: ${e.query} params: ${JSON.stringify(e.params ?? e.parameters ?? e.bindings ?? null)} ${poolStats}`);
+          console.log(
+            `[Prisma] query: ${e.query} params: ${JSON.stringify(e.params ?? e.parameters ?? e.bindings ?? null)} ${poolStats}`,
+          );
         } catch (err) {
           console.log(`[Prisma] query: ${e.query} params: (unserializable)`);
         }
