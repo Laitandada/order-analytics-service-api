@@ -16,7 +16,7 @@ A production-ready NestJS application designed for high-throughput order trackin
 8. [API Endpoints & Swagger Documentation](#8-api-endpoints--swagger-documentation)
 9. [Database Architecture & Read/Write Routing](#9-database-architecture--readwrite-routing)
 10. [Performance Benchmarks](#10-performance-benchmarks)
-11. [Indexing Strategy](#11-indexing-strategy)
+11. [Database Indexing & Partitioning Strategy](#11-database-indexing--partitioning-strategy)
 
 ---
 
@@ -227,22 +227,34 @@ Detailed performance findings, index optimizations, and load testing latency per
 
 ---
 
-## 11. Indexing Strategy
+## 11. Database Indexing & Partitioning Strategy
 
-The following indexes were added based on the primary workload queries:
+### Indexes Added
+To optimize query latency and prevent expensive sequential scans, the following database indexes were added:
+- **`Order.id`** (Standalone Index `idx_order_id`): Avoids full partition-wide scans when performing lookup queries strictly by order ID (`GET /orders/:orderId`) without the partition key.
 
-- `Order.customerId`
-- `Order.orderedAt`
-- `OrderItem.orderId`
-- `OrderItem.orderedAt`
-- `OrderItem.productId`
+### Composite Indexes
+We implemented targeted composite indexes tailored to support specific query workloads:
+1. **`Order_customerId_orderedAt_id_idx`** (`Order(customerId, orderedAt DESC, id DESC)`):
+   - **Workload**: Keyset cursor pagination for customer order history (`GET /customers/:customerId/orders`).
+   - **Reasoning**: Allows PostgreSQL to instantly filter by `customerId` and retrieve the matching orders already sorted in descending time/id order. This avoids sorting records in-memory (`filesort`) and allows seeking directly to the cursor offset.
+2. **`Order_region_orderedAt_idx`** (`Order(region, orderedAt)`):
+   - **Workload**: Top-selling products by region/month analytics (`GET /analytics/products/top`).
+   - **Reasoning**: Speeds up filtering by region and timestamp range inside a partition.
+3. **`OrderItem_orderId_orderedAt_idx`** (`OrderItem(orderId, orderedAt)`):
+   - **Workload**: Product sales aggregates and joins (`Order` JOIN `OrderItem`).
+   - **Reasoning**: Optimizes the composite foreign key join. When joining `Order` and `OrderItem` on `(orderId, orderedAt)`, the database can perform a fast index scan instead of a full sequential scan of the massive `OrderItem` table.
 
-#### Rejected Index
+### Rejected Indexes
+#### Standalone `Order("status")`
+- **Reasoning**: The `status` column is an enum with low selectivity (e.g., `COMPLETED` represents ~50% of the seeded database). When querying by status, the PostgreSQL query planner chooses a **Sequential Scan** over an index scan because reading the entire table sequentially is faster than hopping back and forth across disk pages using a status index. Adding this index would only increase write/storage overhead without improving performance.
 
-**`Order.status`**
-
-**Reason:**  
-`status` has only four possible values and therefore has low selectivity. Adding this index would increase write/storage overhead without materially improving the primary workload queries.
+### Partitioning Strategy
+To handle the scale of 5,000,000 orders and keep table sizes manageable, we implemented **PostgreSQL RANGE Partitioning**:
+- **Partition Key**: `orderedAt` (Order timestamp).
+- **Partition Interval**: Monthly partitions (e.g., `Order_y2026_m04` through `Order_y2026_m09`).
+- **Default Partition**: `Order_default` handles any records falling outside the monthly ranges.
+- **Benefit**: Enables **Partition Pruning**. For monthly analytics queries, PostgreSQL automatically skips scanning partitions for other months, drastically reducing disk I/O and query time.
 
 ---
 
