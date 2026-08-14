@@ -195,10 +195,15 @@ async function main() {
       }
 
       // Execute atomic transaction for the order chunk
-      await prisma.$transaction([
-        prisma.order.createMany({ data: ordersBatch }),
-        prisma.orderItem.createMany({ data: orderItemsBatch })
-      ]);
+      await prisma.$transaction(
+        [
+          prisma.order.createMany({ data: ordersBatch }),
+          prisma.orderItem.createMany({ data: orderItemsBatch })
+        ],
+        {
+          timeout: 30000,
+        }
+      );
 
       // Print status updates
       if ((ob + 1) % 10 === 0 || ob + 1 === numOrderBatches) {
