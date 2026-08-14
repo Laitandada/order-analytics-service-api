@@ -8,7 +8,17 @@ export class AnalyticsRepository {
   constructor(private prisma: PrismaService) {}
 
   async getCustomerRevenue(dto: CustomerRevenueDto): Promise<any[]> {
-    return [];
+    const days = dto.days ?? 90;
+    const thresholdDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    return this.prisma.$queryRaw<any[]>`
+      SELECT o."customerId", c.name, c.email, SUM(o."totalAmount")::float as revenue
+      FROM "Order" o
+      JOIN "Customer" c ON o."customerId" = c.id
+      WHERE o."orderedAt" >= ${thresholdDate} AND o.status != 'CANCELLED'
+      GROUP BY o."customerId", c.name, c.email
+      ORDER BY revenue DESC;
+    `;
   }
 
   async getTopProducts(dto: TopProductsDto): Promise<any[]> {
