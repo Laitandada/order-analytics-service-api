@@ -16,6 +16,7 @@ A production-ready NestJS application designed for high-throughput order trackin
 8. [API Endpoints & Swagger Documentation](#8-api-endpoints--swagger-documentation)
 9. [Database Architecture & Read/Write Routing](#9-database-architecture--readwrite-routing)
 10. [Performance Benchmarks](#10-performance-benchmarks)
+11. [Indexing Strategy](#11-indexing-strategy)
 
 ---
 
@@ -223,6 +224,25 @@ Detailed performance findings, index optimizations, and load testing latency per
 
 - 📊 **[Top Products Analytics Index Optimizations](/performance/top-products-after.txt)**
 - 📈 **[Order Lookup 200-VU Load Test Results](/load-test/results.txt)**
+
+---
+
+## 11. Indexing Strategy
+
+The following indexes were added based on the primary workload queries:
+
+- `Order.customerId`
+- `Order.orderedAt`
+- `OrderItem.orderId`
+- `OrderItem.orderedAt`
+- `OrderItem.productId`
+
+#### Rejected Index
+
+**`Order.status`**
+
+**Reason:**  
+`status` has only four possible values and therefore has low selectivity. Adding this index would increase write/storage overhead without materially improving the primary workload queries.
 
 ---
 
