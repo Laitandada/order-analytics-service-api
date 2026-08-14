@@ -9,10 +9,45 @@ export class CustomersRepository {
   async findCustomerOrders(
     customerId: string,
     dto: CustomerOrdersQueryDto
-  ): Promise<{ data: any[]; nextCursor: any | null }> {
-    return {
-      data: [],
-      nextCursor: null
-    };
+  ): Promise<any[]> {
+    const limit = dto.limit ?? 20;
+
+    const cursorCondition = dto.cursorOrderedAt && dto.cursorOrderId
+      ? {
+          OR: [
+            {
+              orderedAt: {
+                lt: new Date(dto.cursorOrderedAt),
+              },
+            },
+            {
+              orderedAt: new Date(dto.cursorOrderedAt),
+              id: {
+                lt: dto.cursorOrderId,
+              },
+            },
+          ],
+        }
+      : {};
+
+    return this.prisma.order.findMany({
+      where: {
+        customerId,
+        ...cursorCondition,
+      },
+      orderBy: [
+        { orderedAt: "desc" },
+        { id: "desc" },
+      ],
+      take: limit + 1,
+      include: {
+        customer: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
   }
 }
