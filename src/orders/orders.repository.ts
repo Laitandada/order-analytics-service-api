@@ -53,12 +53,11 @@ export class OrdersRepository {
             LIMIT 1
           ) ord
         `;
-        const raw = await (this.db.primary as any).$queryRawUnsafe(
+        const raw = await this.db.primary.pool.query(
           sql,
-          orderId,
-          new Date(dto.orderedAt),
+          [orderId, new Date(dto.orderedAt)],
         );
-        result = raw && raw[0] ? raw[0].order_json : null;
+        result = raw.rows && raw.rows[0] ? raw.rows[0].order_json : null;
       } else {
         // Fallback for query without orderedAt (scans all partitions)
         const sql = `
@@ -85,11 +84,11 @@ export class OrdersRepository {
             LIMIT 1
           ) ord
         `;
-        const raw = await (this.db.primary as any).$queryRawUnsafe(
+        const raw = await this.db.primary.pool.query(
           sql,
-          orderId,
+          [orderId],
         );
-        result = raw && raw[0] ? raw[0].order_json : null;
+        result = raw.rows && raw.rows[0] ? raw.rows[0].order_json : null;
       }
     } else if (dto.orderedAt) {
       result = await this.db.primary.order.findUnique({
@@ -116,14 +115,18 @@ export class OrdersRepository {
         dbDuration - store.connectionAcquireDuration,
       );
     }
-    console.log(
-      `[OrdersRepository] DB query: ${dbDuration.toFixed(2)}ms  orderId=${orderId}`,
-    );
+    if (process.env.LOG_QUERIES === 'true') {
+      console.log(
+        `[OrdersRepository] DB query: ${dbDuration.toFixed(2)}ms  orderId=${orderId}`,
+      );
+    }
 
     const totalDuration = performance.now() - requestStart;
-    console.log(
-      `[OrdersRepository] Total request: ${totalDuration.toFixed(2)}ms  orderId=${orderId}`,
-    );
+    if (process.env.LOG_QUERIES === 'true') {
+      console.log(
+        `[OrdersRepository] Total request: ${totalDuration.toFixed(2)}ms  orderId=${orderId}`,
+      );
+    }
 
     return result;
   }

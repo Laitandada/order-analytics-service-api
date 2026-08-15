@@ -6,6 +6,9 @@ import crypto from 'node:crypto';
 @Injectable()
 export class PerfMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
+    if (process.env.LOG_QUERIES !== 'true') {
+      return next();
+    }
     const store: RequestMetrics = {
       reqId: crypto.randomUUID(),
       url: req.originalUrl,
@@ -27,7 +30,7 @@ export class PerfMiddleware implements NestMiddleware {
             store.prismaQueryDuration,
         );
 
-        if (req.originalUrl.includes('/orders/')) {
+        if (process.env.LOG_QUERIES === 'true' && req.originalUrl.includes('/orders/')) {
           console.log(`
 [PERF_BREAKDOWN] ${req.method} ${req.originalUrl} | ReqId: ${store.reqId}
   ├── Connection acquisition:   ${store.connectionAcquireDuration.toFixed(2)}ms

@@ -29,7 +29,8 @@ export default function () {
   const order = orderIds[randomIndex];
   const { id, orderedAt } = order;
   
-  const url = `http://localhost:3000/orders/${id}?orderedAt=${orderedAt}`;
+  const targetHost = __ENV.TARGET_HOST || 'localhost:3000';
+  const url = `http://${targetHost}/orders/${id}?orderedAt=${orderedAt}`;
   
   const res = http.get(url);
   

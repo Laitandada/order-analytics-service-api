@@ -27,7 +27,7 @@ export class ReadPrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  private readonly readPool: pg.Pool;
+  public readonly readPool: pg.Pool;
 
   constructor() {
     const connectionString =

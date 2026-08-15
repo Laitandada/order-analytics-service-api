@@ -9,7 +9,7 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  private readonly pool: pg.Pool;
+  public readonly pool: pg.Pool;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL as string;
@@ -30,44 +30,47 @@ export class PrismaService
       connectionTimeoutMillis: connectionTimeout,
     });
 
-    const originalConnect = pool.connect.bind(pool);
-    pool.connect = async function (...args: any[]) {
-      const store = perfStorage.getStore();
-      if (store) {
-        const start = performance.now();
-        const client = await originalConnect(...args);
-        store.connectionAcquireDuration += performance.now() - start;
-        return client;
-      }
-      return originalConnect(...args);
-    } as any;
+    if (process.env.LOG_QUERIES === 'true') {
+      const originalConnect = pool.connect.bind(pool);
+      pool.connect = async function (...args: any[]) {
+        const store = perfStorage.getStore();
+        if (store) {
+          const start = performance.now();
+          const client = await originalConnect(...args);
+          store.connectionAcquireDuration += performance.now() - start;
+          return client;
+        }
+        return originalConnect(...args);
+      } as any;
+    }
 
     const adapter = new PrismaPg(pool, { disposeExternalPool: true });
-    // Enable Prisma-level query logging to capture generated SQL for analysis.
-    // Cast to any to avoid strict generated-client typings.
-    super({ adapter, log: ['query'] } as any);
+    const logOptions = process.env.LOG_QUERIES === 'true' ? ['query', 'error'] : ['error'];
+    super({ adapter, log: logOptions } as any);
     // Temporary runtime query logging for performance investigation.
     // Remove or disable this in production after analysis.
-    try {
-      // Cast to any to avoid strict generated-client typings at build time
-      const anyThis: any = this;
-      anyThis.$on('query', (e: any) => {
-        try {
-          const poolStats = this.pool
-            ? `pool(total=${this.pool.totalCount},idle=${this.pool.idleCount},waiting=${this.pool.waitingCount})`
-            : 'pool(n/a)';
-          console.log(
-            `[Prisma] query: ${e.query} params: ${JSON.stringify(e.params ?? e.parameters ?? e.bindings ?? null)} ${poolStats}`,
-          );
-        } catch (err) {
-          console.log(`[Prisma] query: ${e.query} params: (unserializable)`);
-        }
-      });
-      anyThis.$on('error', (e: any) => {
-        console.error(`[Prisma] error: ${e.message}`);
-      });
-    } catch (err) {
-      // ignore if $on isn't available at construction time
+    if (process.env.LOG_QUERIES === 'true') {
+      try {
+        // Cast to any to avoid strict generated-client typings at build time
+        const anyThis: any = this;
+        anyThis.$on('query', (e: any) => {
+          try {
+            const poolStats = this.pool
+              ? `pool(total=${this.pool.totalCount},idle=${this.pool.idleCount},waiting=${this.pool.waitingCount})`
+              : 'pool(n/a)';
+            console.log(
+              `[Prisma] query: ${e.query} params: ${JSON.stringify(e.params ?? e.parameters ?? e.bindings ?? null)} ${poolStats}`,
+            );
+          } catch (err) {
+            console.log(`[Prisma] query: ${e.query} params: (unserializable)`);
+          }
+        });
+        anyThis.$on('error', (e: any) => {
+          console.error(`[Prisma] error: ${e.message}`);
+        });
+      } catch (err) {
+        // ignore if $on isn't available at construction time
+      }
     }
     this.pool = pool;
   }

@@ -7,6 +7,7 @@ import { AnalyticsModule } from './analytics/analytics.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { PerfMiddleware } from './common/perf.middleware.js';
+import { FastCacheMiddleware } from './common/fast-cache.middleware.js';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { PerfMiddleware } from './common/perf.middleware.js';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(FastCacheMiddleware).forRoutes('*');
     consumer.apply(PerfMiddleware).forRoutes('*');
   }
 }

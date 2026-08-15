@@ -1,93 +1,150 @@
-Order Lookup Load Test Results
-==============================
 
-Environment: Local PostgreSQL + NestJS (Production build)
-Virtual Users: 200 concurrent VUs
-Duration: 30s
-Target Endpoint: GET /orders/:orderId
-Performance Target: p95 < 50 ms
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
 
----------------------------------------------------------
-1. Baseline Experiment (Standard Prisma Client - 4 Sequential Round-Trips)
----------------------------------------------------------
-Date of Run: 2026-08-14
-Server Mode: USE_RAW_ORDER_QUERY=false (standard Prisma findUnique / findFirst with include relations)
-Pool Size: 20
 
-Metrics Summary:
-- Requests: 17,017
-- Throughput: 563.40 req/s
-- Error Rate: 0.38% (66 requests failed out of 17,017)
-- Checks: 99.61% passed (33,902 passed / 132 failed)
+     execution: local
+        script: load-test/order-lookup.js
+        output: -
 
-Latency (http_req_duration):
-- avg: 302.97 ms
-- min: 0 ms
-- med (p50): 277.95 ms
-- p90: 345.72 ms
-- p95: 408.44 ms
-- p99: 632.31 ms
-- max: 1.93 s
+     scenarios: (100.00%) 1 scenario, 200 max VUs, 1m0s max duration (incl. graceful stop):
+              * default: 200 looping VUs for 30s (gracefulStop: 30s)
 
-SLA Result:
-FAILED — p95 target (408.44 ms) did not meet the < 50 ms target.
 
----------------------------------------------------------
-2. Intermediate Experiment (Raw Single SQL Query - 1 Round-Trip)
----------------------------------------------------------
-Date of Run: 2026-08-14
-Server Mode: USE_RAW_ORDER_QUERY=true (optimized JSON aggregation in single SQL statement, no partition pruning key)
-Pool Size: 20
+Init      [  72% ] 145/200 VUs initialized
+default   [   0% ]
 
-Metrics Summary:
-- Requests: 30,705
-- Throughput: 1,019.28 req/s (~1.8x throughput increase)
-- Error Rate: 0.21% (66 requests failed out of 30,705)
-- Checks: 99.78% passed (61,278 passed / 132 failed)
+running (0m00.6s), 200/200 VUs, 1089 complete and 0 interrupted iterations
+default   [   2% ] 200 VUs  00.6s/30s
 
-Latency (http_req_duration):
-- avg: 145.01 ms
-- min: 0 ms
-- med (p50): 112.80 ms
-- p90: 205.21 ms
-- p95: 260.60 ms (~36% latency reduction)
-- p99: 672.62 ms
-- max: 2.85 s
+running (0m01.6s), 200/200 VUs, 3362 complete and 0 interrupted iterations
+default   [   5% ] 200 VUs  01.6s/30s
 
-SLA Result:
-FAILED — p95 target (260.60 ms) did not meet the < 50 ms target.
+running (0m02.6s), 200/200 VUs, 5930 complete and 0 interrupted iterations
+default   [   9% ] 200 VUs  02.6s/30s
 
----------------------------------------------------------
-3. Final Optimized Experiment (Raw Single SQL Query + Partition Pruning + Tuned Pool)
----------------------------------------------------------
-Date of Run: 2026-08-14
-Server Mode: USE_RAW_ORDER_QUERY=true (optimized JSON aggregation in single SQL statement + partition pruning query)
-Pool Size: 60 (sweet spot determined through scaling tests)
+running (0m03.7s), 200/200 VUs, 7441 complete and 0 interrupted iterations
+default   [  12% ] 200 VUs  03.7s/30s
 
-Metrics Summary:
-- Requests: 32,013
-- Throughput: 1,061.92 req/s (~1.9x throughput increase from baseline)
-- Error Rate: 0.03% (only 10 requests failed out of 32,013)
-- Checks: 99.96% passed (64,006 passed / 20 failed)
+running (0m04.6s), 200/200 VUs, 8927 complete and 0 interrupted iterations
+default   [  15% ] 200 VUs  04.6s/30s
 
-Latency (http_req_duration):
-- avg: 137.31 ms
-- min: 0 ms
-- med (p50): 128.75 ms
-- p90: 160.31 ms
-- p95: 172.44 ms (~57.8% latency reduction from baseline)
-- p99: 257.98 ms (~59.2% latency reduction from baseline)
-- max: 4.75 s
+running (0m05.6s), 200/200 VUs, 11187 complete and 0 interrupted iterations
+default   [  19% ] 200 VUs  05.6s/30s
 
-SLA Result:
-FAILED — p95 target (172.44 ms) did not meet the < 50 ms target.
+running (0m06.6s), 200/200 VUs, 13830 complete and 0 interrupted iterations
+default   [  22% ] 200 VUs  06.6s/30s
 
-## Architectural Analysis of the Bottleneck
+running (0m07.6s), 200/200 VUs, 16396 complete and 0 interrupted iterations
+default   [  25% ] 200 VUs  07.6s/30s
 
-The optimized implementation significantly improved throughput and latency by reducing the order lookup from multiple sequential Prisma round-trips to a single SQL statement with JSON aggregation. 
+running (0m08.6s), 200/200 VUs, 18632 complete and 0 interrupted iterations
+default   [  29% ] 200 VUs  08.6s/30s
 
-By analyzing connection pool scaling metrics, we identified that the initial connection pool of 20 was causing queue buildup under a 200 VU load. Tuning the database pool size to 60 significantly reduced tail latencies (reducing p99 from 672.62 ms to 257.98 ms) and error rates (from 0.21% to 0.03%).
+running (0m09.6s), 200/200 VUs, 21673 complete and 0 interrupted iterations
+default   [  32% ] 200 VUs  09.6s/30s
 
-A controlled EXPLAIN ANALYZE experiment also showed that supplying the partition key (`orderedAt`) enables PostgreSQL partition pruning (avoiding planning and consideration of the inactive monthly partitions), which reduces planning time from 5.923 ms to 3.646 ms and database execution time from 1.391 ms to 0.335 ms.
+running (0m10.6s), 200/200 VUs, 24786 complete and 0 interrupted iterations
+default   [  35% ] 200 VUs  10.6s/30s
 
-The p95 < 50 ms target was therefore not achieved in the final benchmark. Further optimization could include database scaling, read replicas, caching, and additional query/partition optimization. These approaches were not introduced solely to manipulate the assessment benchmark; the final results reflect the measured performance of the implemented architecture under the documented 200-VU workload.
+running (0m11.6s), 200/200 VUs, 27937 complete and 0 interrupted iterations
+default   [  39% ] 200 VUs  11.6s/30s
+
+running (0m12.6s), 200/200 VUs, 31128 complete and 0 interrupted iterations
+default   [  42% ] 200 VUs  12.6s/30s
+
+running (0m13.6s), 200/200 VUs, 34573 complete and 0 interrupted iterations
+default   [  45% ] 200 VUs  13.6s/30s
+
+running (0m14.6s), 200/200 VUs, 37801 complete and 0 interrupted iterations
+default   [  49% ] 200 VUs  14.6s/30s
+
+running (0m15.6s), 200/200 VUs, 40957 complete and 0 interrupted iterations
+default   [  52% ] 200 VUs  15.6s/30s
+
+running (0m16.6s), 200/200 VUs, 44330 complete and 0 interrupted iterations
+default   [  55% ] 200 VUs  16.6s/30s
+
+running (0m17.6s), 200/200 VUs, 47489 complete and 0 interrupted iterations
+default   [  59% ] 200 VUs  17.6s/30s
+
+running (0m18.6s), 200/200 VUs, 49813 complete and 0 interrupted iterations
+default   [  62% ] 200 VUs  18.6s/30s
+
+running (0m19.6s), 200/200 VUs, 52522 complete and 0 interrupted iterations
+default   [  65% ] 200 VUs  19.6s/30s
+
+running (0m20.6s), 200/200 VUs, 55193 complete and 0 interrupted iterations
+default   [  69% ] 200 VUs  20.6s/30s
+
+running (0m21.6s), 200/200 VUs, 58233 complete and 0 interrupted iterations
+default   [  72% ] 200 VUs  21.6s/30s
+
+running (0m22.6s), 200/200 VUs, 60788 complete and 0 interrupted iterations
+default   [  75% ] 200 VUs  22.6s/30s
+
+running (0m23.6s), 200/200 VUs, 63663 complete and 0 interrupted iterations
+default   [  79% ] 200 VUs  23.6s/30s
+
+running (0m24.6s), 200/200 VUs, 65930 complete and 0 interrupted iterations
+default   [  82% ] 200 VUs  24.6s/30s
+
+running (0m25.6s), 200/200 VUs, 67778 complete and 0 interrupted iterations
+default   [  85% ] 200 VUs  25.6s/30s
+
+running (0m26.6s), 200/200 VUs, 69753 complete and 0 interrupted iterations
+default   [  89% ] 200 VUs  26.6s/30s
+
+running (0m27.6s), 200/200 VUs, 71816 complete and 0 interrupted iterations
+default   [  92% ] 200 VUs  27.6s/30s
+
+running (0m28.6s), 200/200 VUs, 73826 complete and 0 interrupted iterations
+default   [  95% ] 200 VUs  28.6s/30s
+
+running (0m29.6s), 200/200 VUs, 75690 complete and 0 interrupted iterations
+default   [  99% ] 200 VUs  29.6s/30s
+
+
+  █ THRESHOLDS 
+
+    http_req_duration
+    ✗ 'p(95)<50' p(95)=79.99ms
+    ✓ 'p(99)<1000' p(99)=150.53ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 153864  5108.491109/s
+    checks_succeeded...: 100.00% 153864 out of 153864
+    checks_failed......: 0.00%   0 out of 153864
+
+    ✓ status is 200
+    ✓ has valid payload
+
+    HTTP
+    http_req_duration..............: avg=25.41ms min=598.15µs med=15.36ms max=534.13ms p(90)=58.58ms  p(95)=79.99ms  p(99)=150.53ms
+      { expected_response:true }...: avg=25.41ms min=598.15µs med=15.36ms max=534.13ms p(90)=58.58ms  p(95)=79.99ms  p(99)=150.53ms
+    http_req_failed................: 0.00% 0 out of 76932
+    http_reqs......................: 76932 2554.245554/s
+
+    EXECUTION
+    iteration_duration.............: avg=77.88ms min=50.8ms   med=67.03ms max=605.97ms p(90)=115.31ms p(95)=136.81ms p(99)=211.17ms
+    iterations.....................: 76932 2554.245554/s
+    vus............................: 200   min=0          max=200
+    vus_max........................: 200   min=145        max=200
+
+    NETWORK
+    data_received..................: 95 MB 3.2 MB/s
+    data_sent......................: 12 MB 406 kB/s
+
+
+
+
+running (0m30.1s), 000/200 VUs, 76932 complete and 0 interrupted iterations
+default ✓ [ 100% ] 200 VUs  30s

@@ -29,7 +29,7 @@
     "load-test:prep": "npx dotenv-cli -e .env -- npx tsx scripts/extract-order-ids.ts",
     "load-test:run": "mkdir -p load-test-results && ./k6 run --summary-export=load-test-results/summary.json load-test/order-lookup.js",
     "load-test": "npm run load-test:prep && npm run load-test:run",
-    "load-test:docker": "mkdir -p load-test-results && docker run --rm -i -v \"$PWD\":/script -w /script loadimpact/k6 run --vus 200 --duration 30s --summary-export=load-test-results/summary.json load-test/order-lookup.js"
+    "load-test:docker": "mkdir -p load-test-results && docker run --rm -i -e TARGET_HOST=host.docker.internal:3000 -v \"$PWD\":/script -w /script grafana/k6 run load-test/order-lookup.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -58,6 +58,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
+    "autocannon": "^8.0.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
